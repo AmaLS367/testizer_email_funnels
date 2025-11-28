@@ -5,9 +5,6 @@ from typing import Optional
 
 
 def configure_logging(log_level: str, logs_directory: Optional[str] = None) -> None:
-    """
-    Configure application logging to console and rotating file.
-    """
     if logs_directory is None:
         logs_directory = os.path.join(os.getcwd(), "logs")
 
