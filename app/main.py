@@ -5,6 +5,7 @@ from db.connection import database_connection_scope
 from logging_config.logger import configure_logging
 from brevo.api_client import BrevoApiClient
 from funnels.sync_service import FunnelSyncService
+from funnels.purchase_sync_service import PurchaseSyncService
 
 
 def main() -> None:
@@ -43,6 +44,13 @@ def main() -> None:
         )
 
         funnel_sync_service.sync(max_rows_per_type=10)
+
+        purchase_sync_service = PurchaseSyncService(
+            connection=connection,
+            brevo_client=brevo_client,
+        )
+
+        purchase_sync_service.sync(max_rows=100)
 
     logger.info("Job finished")
 
