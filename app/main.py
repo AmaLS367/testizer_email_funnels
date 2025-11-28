@@ -7,19 +7,11 @@ from db.selectors import (
     get_non_language_test_candidates,
 )
 from logging_config.logger import configure_logging
+from brevo.api_client import BrevoApiClient
+from brevo.models import BrevoContact
 
 
 def main() -> None:
-    """
-    Main entry point for the periodic job.
-
-    On Stage 1 this function:
-    - loads settings,
-    - configures logging,
-    - connects to the database,
-    - executes placeholder selectors,
-    - logs results.
-    """
     settings = load_settings()
     configure_logging(settings.application.log_level)
 
@@ -45,6 +37,61 @@ def main() -> None:
 
         if non_language_candidates:
             logger.info("First non language candidate row: %s", non_language_candidates[0])
+
+        brevo_client: BrevoApiClient | None = None
+
+        if (
+            settings.brevo.language_tests_list_id > 0
+            or settings.brevo.non_language_tests_list_id > 0
+        ):
+            brevo_client = BrevoApiClient(
+                api_key=settings.brevo.api_key or "",
+                base_url=settings.brevo.base_url,
+                dry_run=settings.application.dry_run,
+            )
+        else:
+            logger.info(
+                "Brevo list ids are not configured, skipping Brevo synchronization",
+            )
+
+        if brevo_client is not None:
+            if (
+                language_candidates
+                and settings.brevo.language_tests_list_id > 0
+            ):
+                first_language_row = language_candidates[0]
+                first_language_email = str(first_language_row[1])
+
+                language_contact = BrevoContact(
+                    email=first_language_email,
+                    list_ids=[settings.brevo.language_tests_list_id],
+                    attributes={"FUNNEL_TYPE": "language_test"},
+                )
+
+                logger.info(
+                    "Sending sample language contact to Brevo: %s",
+                    language_contact.email,
+                )
+                brevo_client.create_or_update_contact(language_contact)
+
+            if (
+                non_language_candidates
+                and settings.brevo.non_language_tests_list_id > 0
+            ):
+                first_non_language_row = non_language_candidates[0]
+                first_non_language_email = str(first_non_language_row[1])
+
+                non_language_contact = BrevoContact(
+                    email=first_non_language_email,
+                    list_ids=[settings.brevo.non_language_tests_list_id],
+                    attributes={"FUNNEL_TYPE": "non_language_test"},
+                )
+
+                logger.info(
+                    "Sending sample non language contact to Brevo: %s",
+                    non_language_contact.email,
+                )
+                brevo_client.create_or_update_contact(non_language_contact)
 
     logger.info("Job finished")
 

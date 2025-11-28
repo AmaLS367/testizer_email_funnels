@@ -26,8 +26,8 @@ class ApplicationSettings:
 class BrevoSettings:
     api_key: Optional[str]
     base_url: str
-    language_tests_list_id: Optional[int]
-    non_language_tests_list_id: Optional[int]
+    language_tests_list_id: int
+    non_language_tests_list_id: int
 
 
 @dataclass
@@ -38,9 +38,6 @@ class Settings:
 
 
 def _load_boolean(name: str, default: bool) -> bool:
-    """
-    Load a boolean value from environment variable.
-    """
     value = os.getenv(name)
     if value is None:
         return default
@@ -50,9 +47,6 @@ def _load_boolean(name: str, default: bool) -> bool:
 
 
 def _load_integer(name: str, default: int) -> int:
-    """
-    Load an integer value from environment variable.
-    """
     value = os.getenv(name)
     if value is None or value.strip() == "":
         return default
@@ -64,9 +58,6 @@ def _load_integer(name: str, default: int) -> int:
 
 
 def load_settings() -> Settings:
-    """
-    Load all application settings from environment variables or .env file.
-    """
     load_dotenv()
 
     database_settings = DatabaseSettings(
