@@ -11,16 +11,44 @@ from db.selectors import get_pending_funnel_entries, get_certificate_purchase_fo
 
 
 class PurchaseSyncService:
+    """Synchronizes certificate purchases from MODX tables to funnel analytics.
+
+    Periodically checks funnel_entries for users who haven't purchased yet,
+    queries MODX certificate payment tables, and updates both analytics and
+    Brevo contact attributes when purchases are detected.
+    """
+
     def __init__(
         self,
         connection: MySQLConnection,
         brevo_client: BrevoApiClient,
     ) -> None:
+        """Initializes the purchase synchronization service.
+
+        Args:
+            connection: Active MySQL database connection for reading funnel
+                entries and MODX certificate tables.
+            brevo_client: Brevo API client for updating contact attributes
+                after purchase detection.
+        """
         self.connection = connection
         self.brevo_client = brevo_client
         self.logger = logging.getLogger("funnels.purchase_sync_service")
 
     def sync(self, max_rows: int = 100) -> None:
+        """Processes pending funnel entries to detect certificate purchases.
+
+        Fetches entries where certificate_purchased=0, checks MODX payment tables,
+        and updates both funnel_entries and Brevo contacts when purchases are found.
+
+        Side Effects:
+            - Updates funnel_entries.certificate_purchased flag.
+            - Updates Brevo contact attributes (unless dry-run mode).
+
+        Args:
+            max_rows: Maximum entries to process per run. Prevents long-running
+                transactions and allows incremental processing of large backlogs.
+        """
         self.logger.info(
             "Starting purchase synchronization for funnel entries (limit=%s)",
             max_rows,
@@ -78,6 +106,22 @@ class PurchaseSyncService:
         self.logger.info("Purchase synchronization finished")
 
     def _ensure_datetime(self, value: object) -> datetime:
+        """Validates that payment timestamp is a datetime object.
+
+        MySQL connector typically returns datetime objects, but this validation
+        prevents runtime crashes if database schema changes or unexpected data
+        types are returned.
+
+        Args:
+            value: Payment timestamp from database query.
+
+        Returns:
+            datetime object if validation passes.
+
+        Raises:
+            ValueError: If value is not a datetime object, indicating data
+                integrity issue that requires investigation.
+        """
         if isinstance(value, datetime):
             return value
 
@@ -89,6 +133,17 @@ class PurchaseSyncService:
         funnel_type: str,
         purchased_at: datetime,
     ) -> None:
+        """Updates Brevo contact attributes to reflect certificate purchase.
+
+        Side Effects:
+            - Updates contact attributes in Brevo (unless dry-run mode).
+            - Does not modify list membership, only attributes.
+
+        Args:
+            email: Contact email address in Brevo.
+            funnel_type: Funnel type for attribute tracking.
+            purchased_at: Purchase timestamp for analytics.
+        """
         attributes = {
             "FUNNEL_TYPE": funnel_type,
             "CERTIFICATE_PURCHASED": 1,
