@@ -118,3 +118,44 @@ def get_certificate_purchase_for_entry(
     payment_id, payment_datetime = row
 
     return int(payment_id), payment_datetime
+
+
+def get_funnel_conversion_summary(connection, from_date, to_date):
+    query = """
+    SELECT
+        funnel_type,
+        COUNT(*) AS total_entries,
+        SUM(CASE WHEN certificate_purchased = 1 THEN 1 ELSE 0 END) AS total_purchased
+    FROM funnel_entries
+    WHERE 1 = 1
+    """
+
+    params = {}
+
+    if from_date is not None:
+        query += " AND entered_at >= %(from_date)s"
+        params["from_date"] = from_date
+
+    if to_date is not None:
+        query += " AND entered_at < %(to_date)s"
+        params["to_date"] = to_date
+
+    query += " GROUP BY funnel_type ORDER BY funnel_type"
+
+    with connection.cursor() as cursor:
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+    result = []
+
+    for row in rows:
+        funnel_type, total_entries, total_purchased = row
+        result.append(
+            (
+                str(funnel_type),
+                int(total_entries),
+                int(total_purchased),
+            )
+        )
+
+    return result
