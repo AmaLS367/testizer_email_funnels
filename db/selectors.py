@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Tuple, Optional
 
 from mysql.connector import MySQLConnection
@@ -78,28 +79,42 @@ def get_pending_funnel_entries(
 def get_certificate_purchase_for_entry(
     connection: MySQLConnection,
     email: str,
+    funnel_type: str,
     user_id: Optional[int],
     test_id: Optional[int],
-) -> Optional[Tuple]:
-    cursor = connection.cursor()
-
+) -> Optional[Tuple[int, datetime]]:
     query = """
     SELECT
-        o.id AS order_id,
-        o.created_at AS purchased_at
-    FROM orders AS o
+        p.id,
+        p.datetime_payment
+    FROM modx_cert_payment AS p
+    INNER JOIN modx_cert_result AS r ON r.id = p.id_result
+    INNER JOIN modx_cert_users AS u ON u.id = r.id_user
+    INNER JOIN modx_cert_test AS t ON t.id = r.id_test
     WHERE
-        o.email = %s
-        AND o.is_certificate = 1
-        AND o.status IN ('paid', 'completed')
-    ORDER BY o.created_at DESC
+        u.email = %(email)s
+        AND p.id_status = 2
+        AND p.datetime_payment IS NOT NULL
+        AND (
+            (%(funnel_type)s = 'language' AND t.type = 1)
+            OR (%(funnel_type)s = 'non_language' AND t.type = 2)
+        )
+    ORDER BY p.datetime_payment ASC
     LIMIT 1
     """
 
-    params = (email,)
+    params = {
+        "email": email,
+        "funnel_type": funnel_type,
+    }
 
-    cursor.execute(query, params)
-    row = cursor.fetchone()
-    cursor.close()
+    with connection.cursor() as cursor:
+        cursor.execute(query, params)
+        row = cursor.fetchone()
 
-    return row
+    if row is None:
+        return None
+
+    payment_id, payment_datetime = row
+
+    return int(payment_id), payment_datetime

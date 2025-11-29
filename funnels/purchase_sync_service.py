@@ -42,6 +42,7 @@ class PurchaseSyncService:
             purchase_row = get_certificate_purchase_for_entry(
                 connection=self.connection,
                 email=email,
+                funnel_type=funnel_type,
                 user_id=user_id,
                 test_id=test_id,
             )
