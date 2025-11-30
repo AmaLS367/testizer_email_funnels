@@ -87,7 +87,7 @@ def apply_test_schema(database_settings: DatabaseSettings, schema_path: str) -> 
             if statement and not statement.startswith("--"):
                 try:
                     cursor.execute(statement)
-                except mysql.connector.Error as e:
+                except mysql.connector.Error:
                     logger.error("Failed to execute SQL statement: %s", statement[:100])
                     raise
 

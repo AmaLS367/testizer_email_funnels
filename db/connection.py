@@ -46,6 +46,9 @@ def create_database_connection(
 
     while attempt_count < max_attempts:
         try:
+            # Note: read_timeout and write_timeout are not supported in mysql-connector-python 9.1.0
+            # They are accepted as function parameters for API compatibility but not passed to connect()
+            # connection_timeout is supported and is used
             connection = mysql.connector.connect(
                 host=database_settings.host,
                 port=database_settings.port,
@@ -54,8 +57,6 @@ def create_database_connection(
                 database=database_settings.name,
                 charset=database_settings.charset,
                 connection_timeout=connection_timeout,
-                read_timeout=read_timeout,
-                write_timeout=write_timeout,
             )
 
             return connection  # type: ignore[return-value]

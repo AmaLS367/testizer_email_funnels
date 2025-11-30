@@ -4,7 +4,6 @@ This test verifies that the main application entrypoint runs successfully
 in dry-run mode without creating any database records.
 """
 
-import os
 from datetime import datetime, timedelta
 
 import pytest
@@ -46,10 +45,14 @@ def test_app_main_dry_run_does_not_create_records(
     # Get initial counts
     cursor = mysql_test_connection.cursor()
     cursor.execute("SELECT COUNT(*) FROM funnel_entries")
-    initial_funnel_count = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    assert row is not None
+    initial_funnel_count = int(row[0])  # type: ignore[arg-type]
 
     cursor.execute("SELECT COUNT(*) FROM brevo_sync_outbox")
-    initial_outbox_count = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    assert row is not None
+    initial_outbox_count = int(row[0])  # type: ignore[arg-type]
     cursor.close()
 
     # Import and run main (this will use the monkeypatched environment)
@@ -65,10 +68,14 @@ def test_app_main_dry_run_does_not_create_records(
     # Verify no records were created
     cursor = mysql_test_connection.cursor()
     cursor.execute("SELECT COUNT(*) FROM funnel_entries")
-    final_funnel_count = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    assert row is not None
+    final_funnel_count = int(row[0])  # type: ignore[arg-type]
 
     cursor.execute("SELECT COUNT(*) FROM brevo_sync_outbox")
-    final_outbox_count = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    assert row is not None
+    final_outbox_count = int(row[0])  # type: ignore[arg-type]
     cursor.close()
 
     assert final_funnel_count == initial_funnel_count, "No funnel entries should be created in dry-run"

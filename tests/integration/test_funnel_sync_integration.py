@@ -183,8 +183,10 @@ def test_funnel_sync_skips_existing_entries(
     # Verify no new funnel entry was created (count should still be 1)
     cursor = mysql_test_connection.cursor()
     cursor.execute("SELECT COUNT(*) FROM funnel_entries WHERE email = %s", ("existing@example.com",))
-    count = cursor.fetchone()[0]
+    row = cursor.fetchone()
     cursor.close()
 
+    assert row is not None
+    count = int(row[0])  # type: ignore[arg-type]
     assert count == 1, "Should not create duplicate funnel entry"
 
