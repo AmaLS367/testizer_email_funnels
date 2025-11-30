@@ -82,6 +82,26 @@ This will:
 * record funnel entry in the `funnel_entries` table (or log dry-run message, depending on `APP_DRY_RUN`);
 * sync certificate purchases with MODX tables and update `funnel_entries` (or log dry-run message, depending on `APP_DRY_RUN`).
 
+### 2.2.1. End-to-End Flow
+
+The main task follows an outbox pattern for reliable Brevo synchronization:
+
+1. **Funnel Sync and Purchase Sync** write state into:
+   * `funnel_entries` (main analytics table)
+   * `brevo_sync_outbox` (outbox table for Brevo operations)
+
+2. **BrevoSyncWorker** reads pending jobs from `brevo_sync_outbox` and applies them to Brevo by calling the Brevo API.
+
+This decouples database writes from external API calls, ensuring that:
+* Database operations and outbox job creation happen atomically within transactions
+* Brevo API calls can be retried independently if they fail
+* The system can recover from temporary Brevo API outages without losing work
+
+**In dry-run mode:**
+* Only read queries are executed
+* `funnel_entries` and `brevo_sync_outbox` are not modified
+* The worker is not executed
+
 ### 2.3. Running Conversion Report
 
 ```powershell

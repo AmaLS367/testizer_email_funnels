@@ -10,6 +10,7 @@ from config.settings import load_settings
 from db.connection import database_connection_scope
 from logging_config.logger import configure_logging
 from brevo.api_client import BrevoApiClient
+from brevo.sync_worker import BrevoSyncWorker
 from funnels.sync_service import FunnelSyncService
 from funnels.purchase_sync_service import PurchaseSyncService
 
@@ -102,6 +103,15 @@ def main() -> None:
             )
 
             purchase_sync_service.sync(max_rows=100)
+
+            if not settings.application.dry_run:
+                brevo_sync_worker = BrevoSyncWorker(
+                    connection=connection,
+                    brevo_client=brevo_client,
+                )
+                brevo_sync_worker.run_once(limit=100)
+            else:
+                logger.info("Dry run mode: BrevoSyncWorker is not executed.")
 
         logger.info("Job finished")
 
