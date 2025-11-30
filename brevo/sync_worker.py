@@ -10,7 +10,7 @@ from typing import Any, Dict
 
 from mysql.connector import MySQLConnection
 
-from brevo.api_client import BrevoApiClient
+from brevo.api_client import BrevoApiClient, BrevoFatalError, BrevoTransientError
 from brevo.models import BrevoContact
 from brevo.outbox import (
     BrevoSyncJob,
@@ -73,6 +73,24 @@ class BrevoSyncWorker:
                     job.id,
                     job.operation_type,
                 )
+            except BrevoTransientError as e:
+                error_message = str(e)
+                mark_job_error(self.connection, job.id, error_message)
+                self.logger.warning(
+                    "Transient error processing job %s (operation_type=%s): %s",
+                    job.id,
+                    job.operation_type,
+                    error_message,
+                )
+            except BrevoFatalError as e:
+                error_message = str(e)
+                mark_job_error(self.connection, job.id, error_message)
+                self.logger.error(
+                    "Fatal error processing job %s (operation_type=%s): %s",
+                    job.id,
+                    job.operation_type,
+                    error_message,
+                )
             except Exception as e:
                 error_message = str(e)
                 mark_job_error(self.connection, job.id, error_message)
@@ -91,7 +109,8 @@ class BrevoSyncWorker:
 
         Raises:
             ValueError: If operation_type is not recognized or payload is invalid.
-            RuntimeError: If Brevo API call fails.
+            BrevoTransientError: If Brevo API call fails with transient error.
+            BrevoFatalError: If Brevo API call fails with fatal error.
         """
         try:
             payload_data = json.loads(job.payload)
@@ -115,7 +134,8 @@ class BrevoSyncWorker:
 
         Raises:
             ValueError: If required fields are missing.
-            RuntimeError: If Brevo API call fails.
+            BrevoTransientError: If Brevo API call fails with transient error.
+            BrevoFatalError: If Brevo API call fails with fatal error.
         """
         if "email" not in payload_data:
             raise ValueError("Missing required field 'email' in payload")
@@ -143,7 +163,8 @@ class BrevoSyncWorker:
 
         Raises:
             ValueError: If required fields are missing.
-            RuntimeError: If Brevo API call fails.
+            BrevoTransientError: If Brevo API call fails with transient error.
+            BrevoFatalError: If Brevo API call fails with fatal error.
         """
         if "email" not in payload_data:
             raise ValueError("Missing required field 'email' in payload")
@@ -153,9 +174,7 @@ class BrevoSyncWorker:
         attributes.update(
             {
                 "CERTIFICATE_PURCHASED": 1,
-                "CERTIFICATE_PURCHASED_AT": payload_data.get(
-                    "purchased_at", ""
-                ),
+                "CERTIFICATE_PURCHASED_AT": payload_data.get("purchased_at", ""),
             }
         )
 
@@ -167,4 +186,3 @@ class BrevoSyncWorker:
         )
 
         self.brevo_client.create_or_update_contact(contact)
-

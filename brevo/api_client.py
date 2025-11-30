@@ -6,6 +6,24 @@ import requests
 from brevo.models import BrevoContact
 
 
+class BrevoClientError(Exception):
+    """Base exception for all Brevo client errors."""
+
+
+class BrevoTransientError(BrevoClientError):
+    """Error that is safe to retry later.
+
+    This includes network issues, rate limiting (429), and server errors (5xx).
+    """
+
+
+class BrevoFatalError(BrevoClientError):
+    """Error that should not be retried.
+
+    This includes most 4xx client errors (except 429 which is transient).
+    """
+
+
 class BrevoApiClient:
     """HTTP client for Brevo (formerly Sendinblue) email marketing API.
 
@@ -49,8 +67,8 @@ class BrevoApiClient:
 
         Edge cases:
             - Empty API key raises RuntimeError (except in dry-run mode).
-            - HTTP errors (status >= 400) raise RuntimeError with status details.
-            - Network failures raise requests.RequestException.
+            - HTTP errors are classified as transient (429, 5xx) or fatal (other 4xx).
+            - Network failures raise BrevoTransientError.
             - Invalid JSON responses return empty dict instead of crashing.
 
         Args:
@@ -64,9 +82,9 @@ class BrevoApiClient:
             In dry-run mode, returns {"dry_run": True}.
 
         Raises:
-            RuntimeError: If API key is missing (non-dry-run) or API returns
-                error status.
-            requests.RequestException: If network request fails.
+            RuntimeError: If API key is missing (non-dry-run).
+            BrevoTransientError: If network request fails or API returns 429/5xx.
+            BrevoFatalError: If API returns 4xx (except 429).
         """
         url = self._build_url(path)
         if self.dry_run:
@@ -97,17 +115,35 @@ class BrevoApiClient:
             )
         except requests.RequestException as error:
             self.logger.error("Brevo request error: %s", error)
-            raise
+            raise BrevoTransientError(f"Network error: {error}") from error
 
         if response.status_code >= 400:
-            self.logger.error(
-                "Brevo API error %s: %s",
-                response.status_code,
-                response.text,
-            )
-            raise RuntimeError(
-                f"Brevo API error {response.status_code}: {response.text}"
-            )
+            # Trim response body for error messages (limit to 500 chars)
+            original_text = response.text if response.text else ""
+            if len(original_text) > 500:
+                response_text = original_text[:500] + "..."
+            else:
+                response_text = original_text
+
+            if response.status_code == 429 or response.status_code >= 500:
+                self.logger.error(
+                    "Brevo API transient error %s: %s",
+                    response.status_code,
+                    response_text,
+                )
+                raise BrevoTransientError(
+                    f"Brevo API error {response.status_code}: {response_text}"
+                )
+            else:
+                # Other 4xx errors are fatal
+                self.logger.error(
+                    "Brevo API fatal error %s: %s",
+                    response.status_code,
+                    response_text,
+                )
+                raise BrevoFatalError(
+                    f"Brevo API error {response.status_code}: {response_text}"
+                )
 
         try:
             return response.json()  # type: ignore[no-any-return]
@@ -133,7 +169,8 @@ class BrevoApiClient:
             API response dictionary. In dry-run mode, returns {"dry_run": True}.
 
         Raises:
-            RuntimeError: If API request fails (see _request for details).
+            BrevoTransientError: If network error or API returns 429/5xx.
+            BrevoFatalError: If API returns 4xx (except 429).
         """
         payload = contact.to_payload()
         self.logger.info(
