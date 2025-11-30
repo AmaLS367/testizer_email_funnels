@@ -83,12 +83,24 @@ def apply_test_schema(database_settings: DatabaseSettings, schema_path: str) -> 
         statements = schema_content.split(";")
         for statement in statements:
             statement = statement.strip()
-            # Skip empty statements and comments-only statements
-            if statement and not statement.startswith("--"):
+            # Skip empty statements
+            if not statement:
+                continue
+            # Remove comment lines (lines starting with --) but keep SQL commands
+            lines = []
+            for line in statement.split("\n"):
+                stripped_line = line.strip()
+                # Skip comment-only lines
+                if stripped_line and not stripped_line.startswith("--"):
+                    lines.append(line)
+            # Reconstruct statement without comment-only lines
+            cleaned_statement = "\n".join(lines).strip()
+            # Execute if there's actual SQL content
+            if cleaned_statement:
                 try:
-                    cursor.execute(statement)
+                    cursor.execute(cleaned_statement)
                 except mysql.connector.Error:
-                    logger.error("Failed to execute SQL statement: %s", statement[:100])
+                    logger.error("Failed to execute SQL statement: %s", cleaned_statement[:100])
                     raise
 
         connection.commit()

@@ -57,7 +57,12 @@ _mysql_connector_mock.connect = MagicMock()
 # Set up the mysql module
 _mysql_mock.connector = _mysql_connector_mock
 
+# Store original modules if they exist
+_original_mysql = sys.modules.get("mysql")
+_original_mysql_connector = sys.modules.get("mysql.connector")
+
 # Add mocks to sys.modules before any imports
+# Note: For integration tests, we need to restore the real modules
 sys.modules["mysql"] = _mysql_mock
 sys.modules["mysql.connector"] = _mysql_connector_mock
 
@@ -99,19 +104,46 @@ def mysql_test_database(test_settings: Settings) -> DatabaseSettings:
     This fixture is the base for any integration test that needs a prepared
     database schema.
 
+    For integration tests, this fixture restores the real mysql.connector module
+    to allow actual database operations.
+
     Args:
         test_settings: Test settings fixture containing database configuration.
 
     Returns:
         DatabaseSettings object for the prepared test database.
     """
-    create_test_database(test_settings.database)
+    # Restore real mysql.connector for integration tests
+    import importlib
 
-    # Get absolute path to schema file
-    schema_path = Path(__file__).parent / "mysql" / "test_schema.sql"
-    apply_test_schema(test_settings.database, str(schema_path))
+    # Remove mocks and restore real modules
+    if "mysql" in sys.modules:
+        del sys.modules["mysql"]
+    if "mysql.connector" in sys.modules:
+        del sys.modules["mysql.connector"]
 
-    return test_settings.database
+    # Import real mysql.connector
+    import mysql.connector  # noqa: F401
+
+    # Reload modules that use mysql.connector
+    if "tests.utils.mysql_test_utils" in sys.modules:
+        importlib.reload(sys.modules["tests.utils.mysql_test_utils"])
+
+    try:
+        create_test_database(test_settings.database)
+
+        # Get absolute path to schema file
+        schema_path = Path(__file__).parent / "mysql" / "test_schema.sql"
+        apply_test_schema(test_settings.database, str(schema_path))
+
+        return test_settings.database
+    finally:
+        # Restore mocks after database setup
+        sys.modules["mysql"] = _mysql_mock
+        sys.modules["mysql.connector"] = _mysql_connector_mock
+        # Reload modules to use mocks again
+        if "tests.utils.mysql_test_utils" in sys.modules:
+            importlib.reload(sys.modules["tests.utils.mysql_test_utils"])
 
 
 @pytest.fixture
@@ -123,23 +155,55 @@ def mysql_test_connection(
     Opens a database connection and clears all test tables before yielding.
     Ensures each test starts with a clean state.
 
+    For integration tests, this fixture restores the real mysql.connector module
+    to allow actual database connections.
+
     Args:
         mysql_test_database: Database settings fixture.
 
     Yields:
         Active MySQL connection object.
     """
-    with database_connection_scope(mysql_test_database) as connection:
-        cursor = connection.cursor()
+    # Restore real mysql.connector for integration tests
+    # (mysql_test_database already restored it, but we ensure it's still real)
+    import importlib
 
-        # Clear all test tables
-        cursor.execute("DELETE FROM brevo_sync_outbox")
-        cursor.execute("DELETE FROM funnel_entries")
-        cursor.execute("DELETE FROM simpletest_users")
-        cursor.execute("DELETE FROM simpletest_test")
-        cursor.execute("DELETE FROM simpletest_lang")
+    # Remove mocks and restore real modules
+    if "mysql" in sys.modules:
+        del sys.modules["mysql"]
+    if "mysql.connector" in sys.modules:
+        del sys.modules["mysql.connector"]
 
-        cursor.close()
-        connection.commit()
+    # Import real mysql.connector
+    import mysql.connector  # noqa: F401
 
-        yield connection
+    # Reload modules that use mysql.connector
+    if "db.connection" in sys.modules:
+        importlib.reload(sys.modules["db.connection"])
+    if "tests.utils.mysql_test_utils" in sys.modules:
+        importlib.reload(sys.modules["tests.utils.mysql_test_utils"])
+
+    try:
+        with database_connection_scope(mysql_test_database) as connection:
+            cursor = connection.cursor()
+
+            # Clear all test tables
+            cursor.execute("DELETE FROM brevo_sync_outbox")
+            cursor.execute("DELETE FROM funnel_entries")
+            cursor.execute("DELETE FROM simpletest_users")
+            cursor.execute("DELETE FROM simpletest_test")
+            cursor.execute("DELETE FROM simpletest_lang")
+
+            cursor.close()
+            connection.commit()
+
+            yield connection
+    finally:
+        # Restore mocks after integration test
+        sys.modules["mysql"] = _mysql_mock
+        sys.modules["mysql.connector"] = _mysql_connector_mock
+        # Reload modules to use mocks again
+        if "db.connection" in sys.modules:
+            importlib.reload(sys.modules["db.connection"])
+        if "tests.utils.mysql_test_utils" in sys.modules:
+            importlib.reload(sys.modules["tests.utils.mysql_test_utils"])

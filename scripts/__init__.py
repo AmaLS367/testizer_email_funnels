@@ -1,1 +1,1 @@
-# Scripts package for maintenance and diagnostic tools
+# Helper scripts for local development and maintenance.

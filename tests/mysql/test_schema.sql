@@ -3,7 +3,9 @@
 -- (funnel_entries and brevo_sync_outbox) to ensure test accuracy.
 
 -- Simple test tables for MODX database simulation
-CREATE TABLE IF NOT EXISTS simpletest_users (
+DROP TABLE IF EXISTS simpletest_users;
+
+CREATE TABLE simpletest_users (
   Id INT NOT NULL AUTO_INCREMENT,
   Email VARCHAR(255) NULL,
   TestId INT NULL,
@@ -14,20 +16,32 @@ CREATE TABLE IF NOT EXISTS simpletest_users (
   KEY idx_datep (Datep)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS simpletest_test (
-  Id INT NOT NULL AUTO_INCREMENT,
-  LangId INT NULL,
-  PRIMARY KEY (Id),
+-- newid is a technical surrogate key used for the test schema.
+-- Tests intentionally insert only Id and LangId, so newid must be AUTO_INCREMENT.
+DROP TABLE IF EXISTS simpletest_test;
+
+CREATE TABLE simpletest_test (
+  newid INT NOT NULL AUTO_INCREMENT,
+  Id INT NOT NULL,
+  LangId INT NOT NULL,
+  PRIMARY KEY (newid),
   KEY idx_langid (LangId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS simpletest_lang (
+DROP TABLE IF EXISTS simpletest_lang;
+
+CREATE TABLE simpletest_lang (
   Id INT NOT NULL AUTO_INCREMENT,
   PRIMARY KEY (Id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Analytics tables (must match production schema)
-CREATE TABLE IF NOT EXISTS funnel_entries (
+-- Drop brevo_sync_outbox first (it may reference funnel_entries)
+DROP TABLE IF EXISTS brevo_sync_outbox;
+
+DROP TABLE IF EXISTS funnel_entries;
+
+CREATE TABLE funnel_entries (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   email VARCHAR(255) NOT NULL,
   funnel_type VARCHAR(50) NOT NULL,
@@ -42,7 +56,7 @@ CREATE TABLE IF NOT EXISTS funnel_entries (
   KEY idx_user_test (user_id, test_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS brevo_sync_outbox (
+CREATE TABLE brevo_sync_outbox (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   funnel_entry_id INT UNSIGNED NOT NULL,
   operation_type VARCHAR(50) NOT NULL,
