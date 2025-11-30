@@ -21,6 +21,7 @@ class PurchaseSyncService:
         self,
         connection: MySQLConnection,
         brevo_client: BrevoApiClient,
+        dry_run: bool = False,
     ) -> None:
         """Initializes the purchase synchronization service.
 
@@ -29,9 +30,12 @@ class PurchaseSyncService:
                 entries and MODX certificate tables.
             brevo_client: Brevo API client for updating contact attributes
                 after purchase detection.
+            dry_run: If True, no database writes or Brevo API calls are performed.
+                Only read operations and logging occur.
         """
         self.connection = connection
         self.brevo_client = brevo_client
+        self.dry_run = dry_run
         self.logger = logging.getLogger("funnels.purchase_sync_service")
 
     def sync(self, max_rows: int = 100) -> None:
@@ -88,19 +92,28 @@ class PurchaseSyncService:
                 order_id,
             )
 
-            mark_certificate_purchased(
-                connection=self.connection,
-                email=email,
-                funnel_type=funnel_type,
-                test_id=test_id,
-                purchased_at=purchased_at_datetime,
-            )
+            if self.dry_run:
+                self.logger.info(
+                    "Dry run: would update database and Brevo contact for purchase (email=%s, funnel_type=%s, test_id=%s, order_id=%s)",
+                    email,
+                    funnel_type,
+                    test_id,
+                    order_id,
+                )
+            else:
+                mark_certificate_purchased(
+                    connection=self.connection,
+                    email=email,
+                    funnel_type=funnel_type,
+                    test_id=test_id,
+                    purchased_at=purchased_at_datetime,
+                )
 
-            self._update_brevo_contact_after_purchase(
-                email=email,
-                funnel_type=funnel_type,
-                purchased_at=purchased_at_datetime,
-            )
+                self._update_brevo_contact_after_purchase(
+                    email=email,
+                    funnel_type=funnel_type,
+                    purchased_at=purchased_at_datetime,
+                )
 
         self.logger.info("Purchase synchronization finished")
 

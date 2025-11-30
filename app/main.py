@@ -90,6 +90,7 @@ def main() -> None:
                 brevo_client=brevo_client,
                 language_list_id=settings.brevo.language_tests_list_id,
                 non_language_list_id=settings.brevo.non_language_tests_list_id,
+                dry_run=settings.application.dry_run,
             )
 
             funnel_sync_service.sync(max_rows_per_type=10)
@@ -97,6 +98,7 @@ def main() -> None:
             purchase_sync_service = PurchaseSyncService(
                 connection=connection,
                 brevo_client=brevo_client,
+                dry_run=settings.application.dry_run,
             )
 
             purchase_sync_service.sync(max_rows=100)

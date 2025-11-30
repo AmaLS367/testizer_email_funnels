@@ -14,7 +14,7 @@ Main variables in the `.env` file:
 
   Value: `true` or `false`.
 
-  When `true`, the script performs all queries and requests but does not send real requests to Brevo and does not modify data in the `funnel_entries` table.
+  When `true`, the script performs all read operations (queries) but does not send real requests to Brevo and does not modify data in the `funnel_entries` table. No writes to the database occur, and no Brevo API calls are performed. The script only logs what would have been done.
 
   For production mode, set to `false`.
 
@@ -70,9 +70,9 @@ python -m app.main
 This will:
 
 * select candidates for language and non-language tests;
-* send contacts to Brevo (or perform dry run only, depending on `APP_DRY_RUN`);
-* record funnel entry in the `funnel_entries` table;
-* sync certificate purchases with MODX tables and update `funnel_entries`.
+* send contacts to Brevo (or log dry-run message, depending on `APP_DRY_RUN`);
+* record funnel entry in the `funnel_entries` table (or log dry-run message, depending on `APP_DRY_RUN`);
+* sync certificate purchases with MODX tables and update `funnel_entries` (or log dry-run message, depending on `APP_DRY_RUN`).
 
 ### 2.3. Running Conversion Report
 
@@ -104,7 +104,7 @@ Recommended sequence:
 
    and check logs in `logs/app.log`, as well as logs in Brevo, to verify requests are formed correctly.
 
-3. Verify that entries appear in the `funnel_entries` table and everything looks as expected.
+3. Verify that the logs show what would be written to the `funnel_entries` table and everything looks as expected. Note: In dry-run mode, no entries are actually written to the database.
 
 4. Change in `.env`:
 

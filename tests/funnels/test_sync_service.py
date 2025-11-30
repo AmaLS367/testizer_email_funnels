@@ -73,6 +73,7 @@ def test_funnel_sync_sends_candidates_and_creates_entries(monkeypatch):
         brevo_client=brevo_client,  # type: ignore[arg-type]
         language_list_id=4,
         non_language_list_id=5,
+        dry_run=False,
     )
 
     service.sync()
@@ -128,8 +129,77 @@ def test_funnel_sync_does_nothing_when_no_candidates(monkeypatch):
         brevo_client=brevo_client,  # type: ignore[arg-type]
         language_list_id=4,
         non_language_list_id=5,
+        dry_run=False,
     )
 
     service.sync()
 
     assert len(brevo_client.calls) == 0
+
+
+def test_funnel_sync_dry_run_does_not_call_brevo_or_create_entries(monkeypatch):
+    """Test that dry-run mode does not call Brevo API or create funnel entries."""
+    language_candidates = [
+        (1, "lang1@example.com"),
+    ]
+
+    non_language_candidates = [
+        (2, "non1@example.com"),
+    ]
+
+    created_entries = []
+
+    def fake_get_language_test_candidates(connection, limit):
+        return language_candidates
+
+    def fake_get_non_language_test_candidates(connection, limit):
+        return non_language_candidates
+
+    def fake_create_funnel_entry(
+        connection, email, funnel_type, user_id=None, test_id=None
+    ):
+        created_entries.append(
+            {
+                "email": email,
+                "funnel_type": funnel_type,
+                "user_id": user_id,
+                "test_id": test_id,
+            }
+        )
+        raise AssertionError(
+            "create_funnel_entry must not be called in dry-run mode"
+        )
+
+    import funnels.sync_service as sync_module
+
+    monkeypatch.setattr(
+        sync_module,
+        "get_language_test_candidates",
+        fake_get_language_test_candidates,
+    )
+    monkeypatch.setattr(
+        sync_module,
+        "get_non_language_test_candidates",
+        fake_get_non_language_test_candidates,
+    )
+    monkeypatch.setattr(
+        sync_module,
+        "create_funnel_entry",
+        fake_create_funnel_entry,
+    )
+
+    brevo_client = DummyBrevoClient()
+
+    service = FunnelSyncService(
+        connection=object(),  # type: ignore[arg-type]
+        brevo_client=brevo_client,  # type: ignore[arg-type]
+        language_list_id=4,
+        non_language_list_id=5,
+        dry_run=True,
+    )
+
+    service.sync()
+
+    # In dry-run mode, no Brevo calls or DB writes should occur
+    assert len(brevo_client.calls) == 0
+    assert len(created_entries) == 0

@@ -28,6 +28,7 @@ class FunnelSyncService:
         brevo_client: BrevoApiClient,
         language_list_id: int,
         non_language_list_id: int,
+        dry_run: bool = False,
     ) -> None:
         """Initializes the funnel synchronization service.
 
@@ -40,11 +41,14 @@ class FunnelSyncService:
                 If <= 0, language funnel processing is skipped.
             non_language_list_id: Brevo list ID for non-language test funnel
                 contacts. If <= 0, non-language funnel processing is skipped.
+            dry_run: If True, no database writes or Brevo API calls are performed.
+                Only read operations and logging occur.
         """
         self.connection = connection
         self.brevo_client = brevo_client
         self.language_list_id = language_list_id
         self.non_language_list_id = non_language_list_id
+        self.dry_run = dry_run
         self.logger = logging.getLogger("funnels.sync_service")
 
     def sync(self, max_rows_per_type: int = 100) -> None:
@@ -163,11 +167,27 @@ class FunnelSyncService:
         Side Effects:
             - Creates/updates contact in Brevo (unless dry-run mode).
             - Inserts record into funnel_entries table (or handles duplicate gracefully).
+            - In dry-run mode, only logs what would be done without making changes.
 
         Args:
             candidate: User candidate extracted from test results.
             list_id: Brevo list ID where contact should be added.
         """
+        if self.dry_run:
+            self.logger.info(
+                "Dry run: would create Brevo contact for (email=%s, funnel_type=%s, list_id=%s)",
+                candidate.email,
+                candidate.funnel_type,
+                list_id,
+            )
+            self.logger.info(
+                "Dry run: would create funnel entry for (email=%s, funnel_type=%s, test_id=%s)",
+                candidate.email,
+                candidate.funnel_type,
+                candidate.test_id,
+            )
+            return
+
         brevo_contact = BrevoContact(
             email=candidate.email,
             list_ids=[list_id],
