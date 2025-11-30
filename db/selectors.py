@@ -60,7 +60,7 @@ def get_language_test_candidates(
     rows = cursor.fetchall()
     cursor.close()
 
-    return rows  # type: ignore[no-any-return]  # type: ignore[return-value]
+    return rows  # type: ignore[no-any-return,return-value]
 
 
 def get_non_language_test_candidates(
