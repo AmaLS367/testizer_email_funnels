@@ -3,7 +3,7 @@ from typing import List, Tuple
 
 from mysql.connector import MySQLConnection
 
-from analytics.tracking import funnel_entry_exists, create_funnel_entry
+from analytics.tracking import create_funnel_entry
 from brevo.api_client import BrevoApiClient
 from brevo.models import BrevoContact
 from funnels.models import FunnelCandidate, FunnelType
@@ -18,8 +18,8 @@ class FunnelSyncService:
 
     This service ensures idempotent processing: the same user will never be
     added to the same funnel twice, preventing duplicate Brevo API calls and
-    maintaining data integrity. The idempotency check via funnel_entry_exists
-    is the primary guard against duplicate processing.
+    maintaining data integrity. Idempotency is enforced at the database level
+    by create_funnel_entry using a unique constraint on (email, funnel_type, test_id).
     """
 
     def __init__(
@@ -154,33 +154,20 @@ class FunnelSyncService:
     ) -> None:
         """Processes a single candidate through the funnel pipeline.
 
-        Idempotency check: If candidate already exists in funnel_entries, skips
-        all processing to prevent duplicate Brevo API calls and avoid API rate limits.
-        This is the primary guard ensuring the service can be safely run multiple
-        times without side effects.
+        Idempotency is enforced at the database level by create_funnel_entry, which
+        handles duplicate entries gracefully via the unique constraint on
+        (email, funnel_type, test_id). If a duplicate entry already exists,
+        create_funnel_entry will rollback and log an informational message without
+        raising an exception, effectively skipping the candidate.
 
         Side Effects:
             - Creates/updates contact in Brevo (unless dry-run mode).
-            - Inserts record into funnel_entries table.
+            - Inserts record into funnel_entries table (or handles duplicate gracefully).
 
         Args:
             candidate: User candidate extracted from test results.
             list_id: Brevo list ID where contact should be added.
         """
-        # Idempotency guard: prevents duplicate processing and API rate limit issues
-        if funnel_entry_exists(
-            connection=self.connection,
-            email=candidate.email,
-            funnel_type=candidate.funnel_type,
-            test_id=candidate.test_id,
-        ):
-            self.logger.info(
-                "Candidate already in funnel, skipping (email=%s, funnel_type=%s)",
-                candidate.email,
-                candidate.funnel_type,
-            )
-            return
-
         brevo_contact = BrevoContact(
             email=candidate.email,
             list_ids=[list_id],

@@ -1,7 +1,9 @@
+import logging
 from datetime import datetime
 from typing import Optional
 
-from mysql.connector import MySQLConnection
+import mysql.connector
+from mysql.connector import IntegrityError, MySQLConnection
 
 
 def funnel_entry_exists(
@@ -68,13 +70,15 @@ def create_funnel_entry(
 ) -> None:
     """Records a new funnel entry when a user is added to a funnel.
 
-    This function assumes idempotency has already been checked by the caller
-    (typically via funnel_entry_exists). Direct calls without prior checks
-    may create duplicate entries.
+    This function enforces idempotency at the database level using a unique constraint
+    on (email, funnel_type, test_id). If a duplicate entry already exists, the function
+    handles the IntegrityError gracefully by rolling back and logging an informational
+    message, without raising an exception.
 
     Side Effects:
-        - Inserts record into funnel_entries table.
-        - Commits transaction immediately (no rollback on failure).
+        - Inserts record into funnel_entries table on success.
+        - Commits transaction on successful insert.
+        - Rolls back transaction on duplicate entry (IntegrityError).
 
     Args:
         connection: Active MySQL database connection.
@@ -84,24 +88,43 @@ def create_funnel_entry(
         test_id: Optional test ID for cross-referencing.
 
     Raises:
-        mysql.connector.Error: If database insert fails (e.g., constraint violation).
+        mysql.connector.Error: If database insert fails for reasons other than
+            duplicate entry (e.g., connection error, other constraint violations).
     """
-    cursor = connection.cursor()
+    logger = logging.getLogger("analytics.tracking")
+    cursor = None
 
-    query = """
-    INSERT INTO funnel_entries (
-        email,
-        funnel_type,
-        user_id,
-        test_id
-    ) VALUES (%s, %s, %s, %s)
-    """
+    try:
+        cursor = connection.cursor()
 
-    params = (email, funnel_type, user_id, test_id)
+        query = """
+        INSERT INTO funnel_entries (
+            email,
+            funnel_type,
+            user_id,
+            test_id
+        ) VALUES (%s, %s, %s, %s)
+        """
 
-    cursor.execute(query, params)
-    connection.commit()
-    cursor.close()
+        params = (email, funnel_type, user_id, test_id)
+
+        cursor.execute(query, params)
+        connection.commit()
+
+    except IntegrityError as e:
+        # Handle duplicate entry due to unique constraint on (email, funnel_type, test_id)
+        connection.rollback()
+        logger.info(
+            "Duplicate funnel entry already exists (email=%s, funnel_type=%s, test_id=%s)",
+            email,
+            funnel_type,
+            test_id,
+        )
+        # Do not re-raise the exception - duplicate is handled gracefully
+
+    finally:
+        if cursor:
+            cursor.close()
 
 
 def mark_certificate_purchased(

@@ -1,4 +1,8 @@
 from datetime import datetime
+from unittest.mock import MagicMock, patch
+
+import mysql.connector
+import pytest
 
 from analytics import tracking
 
@@ -7,6 +11,7 @@ class DummyCursor:
     def __init__(self):
         self.executed_queries = []
         self.fetchone_result: tuple | None = None
+        self.close_calls = 0
 
     def execute(self, query, params=None):
         self.executed_queries.append((query, params))
@@ -15,19 +20,23 @@ class DummyCursor:
         return self.fetchone_result
 
     def close(self):
-        pass
+        self.close_calls += 1
 
 
 class DummyConnection:
     def __init__(self, cursor):
         self._cursor = cursor
         self.commits = 0
+        self.rollbacks = 0
 
     def cursor(self):
         return self._cursor
 
     def commit(self):
         self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
 
 
 def test_funnel_entry_exists_returns_false_when_no_row():
@@ -81,6 +90,8 @@ def test_create_funnel_entry_inserts_and_commits():
     )
 
     assert connection.commits == 1
+    assert connection.rollbacks == 0
+    assert cursor.close_calls == 1
     assert len(cursor.executed_queries) == 1
     query, params = cursor.executed_queries[0]
     assert "INSERT INTO funnel_entries" in query
@@ -88,6 +99,58 @@ def test_create_funnel_entry_inserts_and_commits():
     assert params[1] == "language"
     assert params[2] == 10
     assert params[3] == 42
+
+
+def test_create_funnel_entry_handles_duplicate_gracefully():
+    """Test that create_funnel_entry handles IntegrityError for duplicate entries."""
+    cursor = DummyCursor()
+
+    def execute_raises_integrity_error(query, params=None):
+        raise mysql.connector.IntegrityError("Duplicate entry")
+
+    cursor.execute = execute_raises_integrity_error
+    connection = DummyConnection(cursor)
+
+    # Should not raise an exception
+    tracking.create_funnel_entry(
+        connection=connection,  # type: ignore[arg-type]
+        email="user@example.com",
+        funnel_type="language",
+        user_id=10,
+        test_id=42,
+    )
+
+    # Should rollback but not commit, and cursor should be closed
+    assert connection.rollbacks == 1
+    assert connection.commits == 0
+    assert cursor.close_calls == 1
+
+
+def test_create_funnel_entry_propagates_other_errors():
+    """Test that create_funnel_entry propagates non-IntegrityError exceptions."""
+    cursor = DummyCursor()
+
+    def execute_raises_other_error(query, params=None):
+        raise mysql.connector.Error("Connection lost")
+
+    cursor.execute = execute_raises_other_error
+    connection = DummyConnection(cursor)
+
+    # Should raise the exception
+    with pytest.raises(mysql.connector.Error):
+        tracking.create_funnel_entry(
+            connection=connection,  # type: ignore[arg-type]
+            email="user@example.com",
+            funnel_type="language",
+            user_id=10,
+            test_id=42,
+        )
+
+    # Should not commit or rollback (exception occurred before commit)
+    # Cursor should still be closed in finally block
+    assert connection.commits == 0
+    assert connection.rollbacks == 0
+    assert cursor.close_calls == 1
 
 
 def test_mark_certificate_purchased_without_test_id_updates_and_commits():
