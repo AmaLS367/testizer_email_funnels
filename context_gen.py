@@ -48,14 +48,18 @@ IGNORE_FILES = {
     ".env.example",
     ".DS_Store",
     "Thumbs.db",
-    "*.pyc",
-    "*.pyo",
-    "*.pyd",
-    "*.log",
     ".coverage",
     "coverage.xml",
     ".pytest_cache",
     "full_project_context_testizer.txt",
+}
+
+IGNORE_EXTENSIONS = {
+    ".pyc",
+    ".pyo",
+    ".pyd",
+    ".log",
+    ".cache",
 }
 
 
@@ -75,6 +79,9 @@ def generate_context():
                     continue
 
                 _, ext = os.path.splitext(file)
+                if ext in IGNORE_EXTENSIONS:
+                    continue
+
                 if ext in INCLUDE_EXT or file in (
                     "Dockerfile",
                     ".htaccess",
