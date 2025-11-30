@@ -266,3 +266,183 @@ def test_request_trims_long_response_body(monkeypatch):
     error_message = str(exc_info.value)
     assert len(error_message) < len(long_text) + 50  # Should be trimmed
     assert "..." in error_message  # Should have ellipsis
+
+
+def test_create_or_update_contact_retries_on_transient_error_then_succeeds(
+    monkeypatch,
+):
+    """Test that create_or_update_contact retries on transient error and succeeds."""
+    import brevo.api_client as api_module
+
+    attempt_count = [0]
+
+    class DummyResponse:
+        def __init__(self, status=200, text="ok"):
+            self.status_code = status
+            self.text = text
+
+        def json(self):
+            return {"success": True}
+
+    def fake_request(method, url, headers=None, json=None, timeout=None):
+        attempt_count[0] += 1
+        if attempt_count[0] == 1:
+            # First attempt fails with transient error (5xx)
+            return DummyResponse(status=500, text="Internal server error")
+        # Second attempt succeeds
+        return DummyResponse()
+
+    monkeypatch.setattr(api_module.requests, "request", fake_request)
+    monkeypatch.setattr(api_module.time, "sleep", lambda x: None)  # No actual sleep
+
+    client = BrevoApiClient(
+        api_key="secret-key",
+        base_url="https://api.brevo.com/v3",
+        dry_run=False,
+        max_retries=3,
+        base_backoff_seconds=0.1,
+    )
+
+    contact = BrevoContact(
+        email="user@example.com",
+        list_ids=[1, 2],
+        attributes={"FUNNEL_TYPE": "language"},
+    )
+
+    response = client.create_or_update_contact(contact)
+
+    assert attempt_count[0] == 2  # Should have retried once
+    assert response == {"success": True}
+
+
+def test_create_or_update_contact_exhausts_retries_on_transient_errors(monkeypatch):
+    """Test that create_or_update_contact stops after max_retries."""
+    import brevo.api_client as api_module
+
+    attempt_count = [0]
+
+    class DummyResponse:
+        def __init__(self):
+            self.status_code = 500
+            self.text = "Internal server error"
+
+        def json(self):
+            return {}
+
+    def fake_request(method, url, headers=None, json=None, timeout=None):
+        attempt_count[0] += 1
+        # Always fail with transient error (5xx)
+        return DummyResponse()
+
+    monkeypatch.setattr(api_module.requests, "request", fake_request)
+    monkeypatch.setattr(api_module.time, "sleep", lambda x: None)  # No actual sleep
+
+    client = BrevoApiClient(
+        api_key="secret-key",
+        base_url="https://api.brevo.com/v3",
+        dry_run=False,
+        max_retries=3,
+        base_backoff_seconds=0.1,
+    )
+
+    contact = BrevoContact(
+        email="user@example.com",
+        list_ids=[1, 2],
+        attributes={"FUNNEL_TYPE": "language"},
+    )
+
+    with pytest.raises(BrevoTransientError) as exc_info:
+        client.create_or_update_contact(contact)
+
+    assert attempt_count[0] == 4  # Initial attempt + 3 retries
+    assert "500" in str(exc_info.value)
+
+
+def test_create_or_update_contact_retries_on_network_exception_then_succeeds(
+    monkeypatch,
+):
+    """Test that create_or_update_contact retries on network exception and succeeds."""
+    import brevo.api_client as api_module
+
+    attempt_count = [0]
+
+    class DummyResponse:
+        def __init__(self):
+            self.status_code = 200
+            self.text = "ok"
+
+        def json(self):
+            return {"success": True}
+
+    def fake_request(method, url, headers=None, json=None, timeout=None):
+        attempt_count[0] += 1
+        if attempt_count[0] == 1:
+            # First attempt fails with network error
+            raise requests.ConnectionError("Connection failed")
+        # Second attempt succeeds
+        return DummyResponse()
+
+    monkeypatch.setattr(api_module.requests, "request", fake_request)
+    monkeypatch.setattr(api_module.time, "sleep", lambda x: None)  # No actual sleep
+
+    client = BrevoApiClient(
+        api_key="secret-key",
+        base_url="https://api.brevo.com/v3",
+        dry_run=False,
+        max_retries=3,
+        base_backoff_seconds=0.1,
+    )
+
+    contact = BrevoContact(
+        email="user@example.com",
+        list_ids=[1, 2],
+        attributes={"FUNNEL_TYPE": "language"},
+    )
+
+    response = client.create_or_update_contact(contact)
+
+    assert attempt_count[0] == 2  # Should have retried once
+    assert response == {"success": True}
+
+
+def test_create_or_update_contact_does_not_retry_on_fatal_error(monkeypatch):
+    """Test that create_or_update_contact does not retry on fatal error."""
+    import brevo.api_client as api_module
+
+    attempt_count = [0]
+
+    class DummyResponse:
+        def __init__(self):
+            self.status_code = 400
+            self.text = "Bad request"
+
+        def json(self):
+            return {}
+
+    def fake_request(method, url, headers=None, json=None, timeout=None):
+        attempt_count[0] += 1
+        return DummyResponse()
+
+    monkeypatch.setattr(api_module.requests, "request", fake_request)
+    monkeypatch.setattr(api_module.time, "sleep", lambda x: None)  # No actual sleep
+
+    client = BrevoApiClient(
+        api_key="secret-key",
+        base_url="https://api.brevo.com/v3",
+        dry_run=False,
+        max_retries=3,
+        base_backoff_seconds=0.1,
+    )
+
+    contact = BrevoContact(
+        email="user@example.com",
+        list_ids=[1, 2],
+        attributes={"FUNNEL_TYPE": "language"},
+    )
+
+    with pytest.raises(BrevoFatalError) as exc_info:
+        client.create_or_update_contact(contact)
+
+    assert attempt_count[0] == 1  # Should not retry
+    assert "400" in str(exc_info.value)
+    assert "Bad request" in str(exc_info.value)

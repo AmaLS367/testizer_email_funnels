@@ -1,4 +1,6 @@
 import logging
+import random
+import time
 from typing import Any, Dict, Optional
 
 import requests
@@ -32,7 +34,14 @@ class BrevoApiClient:
     without side effects.
     """
 
-    def __init__(self, api_key: str, base_url: str, dry_run: bool) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        dry_run: bool,
+        max_retries: int = 3,
+        base_backoff_seconds: float = 1.0,
+    ) -> None:
         """Initializes the Brevo API client.
 
         Args:
@@ -42,10 +51,16 @@ class BrevoApiClient:
                 Trailing slashes are automatically stripped.
             dry_run: If True, all API calls are logged but not executed.
                 Used for testing without creating real contacts or consuming API quota.
+            max_retries: Maximum number of retry attempts for transient errors.
+                Defaults to 3.
+            base_backoff_seconds: Base delay in seconds for exponential backoff.
+                Defaults to 1.0.
         """
         self.api_key = api_key.strip()
         self.base_url = base_url.rstrip("/")
         self.dry_run = dry_run
+        self.max_retries = max_retries
+        self.base_backoff_seconds = base_backoff_seconds
         self.logger = logging.getLogger("brevo.api_client")
 
     def _build_url(self, path: str) -> str:
@@ -169,8 +184,10 @@ class BrevoApiClient:
             API response dictionary. In dry-run mode, returns {"dry_run": True}.
 
         Raises:
-            BrevoTransientError: If network error or API returns 429/5xx.
-            BrevoFatalError: If API returns 4xx (except 429).
+            BrevoTransientError: If network error or API returns 429/5xx after
+                all retry attempts are exhausted.
+            BrevoFatalError: If API returns 4xx (except 429). Fatal errors are
+                not retried.
         """
         payload = contact.to_payload()
         self.logger.info(
@@ -179,4 +196,39 @@ class BrevoApiClient:
             contact.list_ids,
             self.dry_run,
         )
-        return self._request("POST", "/contacts", json_body=payload)
+
+        last_error: Optional[BrevoTransientError] = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                return self._request("POST", "/contacts", json_body=payload)
+            except BrevoFatalError:
+                # Fatal errors should not be retried
+                raise
+            except BrevoTransientError as error:
+                last_error = error
+                if attempt < self.max_retries:
+                    # Calculate exponential backoff with jitter
+                    sleep_seconds = self.base_backoff_seconds * (2**attempt)
+                    jitter = random.uniform(0, 0.5)
+                    total_sleep = sleep_seconds + jitter
+
+                    self.logger.warning(
+                        "Transient error on attempt %d/%d: %s. Retrying in %.2f seconds",
+                        attempt + 1,
+                        self.max_retries + 1,
+                        str(error),
+                        total_sleep,
+                    )
+                    time.sleep(total_sleep)
+                else:
+                    # All retries exhausted
+                    self.logger.error(
+                        "All %d retry attempts exhausted for contact %s",
+                        self.max_retries + 1,
+                        contact.email,
+                    )
+                    raise
+
+        # This should never be reached, but mypy needs it
+        assert last_error is not None
+        raise last_error
