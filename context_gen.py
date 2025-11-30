@@ -14,6 +14,15 @@ IGNORE_DIRS = {
     "cache",
     "logs",
     ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".tox",
+    "dist",
+    "build",
+    "*.egg-info",
+    ".coverage",
+    "htmlcov",
+    ".hypothesis",
 }
 INCLUDE_EXT = {
     ".py",
@@ -37,6 +46,16 @@ IGNORE_FILES = {
     ".gitattributes",
     ".env",
     ".env.example",
+    ".DS_Store",
+    "Thumbs.db",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    "*.log",
+    ".coverage",
+    "coverage.xml",
+    ".pytest_cache",
+    "full_project_context_testizer.txt",
 }
 
 
