@@ -110,9 +110,9 @@ class BrevoApiClient:
             )
 
         try:
-            return response.json()
+            return response.json()  # type: ignore[no-any-return]
         except ValueError:
-            return {}
+            return {}  # type: ignore[return-value]
 
     def create_or_update_contact(self, contact: BrevoContact) -> Dict[str, Any]:
         """Creates or updates a contact in Brevo (upsert operation).

@@ -1,12 +1,13 @@
 [tool.black]
 line-length = 88
 target-version = ['py310']
-include = '\.pyi?$'
-exclude = '''
+include = '\\.pyi?$'
+extend-exclude = '''
 /(
-    \.git
-  | \.venv
-  | \.mypy_cache
+    \\.git
+  | \\.venv
+  | venv
+  | \\.mypy_cache
   | __pycache__
 )/
 '''
@@ -18,7 +19,7 @@ warn_unused_configs = true
 ignore_missing_imports = true
 exclude = [
     "tests",
-    "\.venv",
+    "\\.venv",
     "__pycache__"
 ]
 
