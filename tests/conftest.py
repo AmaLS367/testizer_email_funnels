@@ -76,16 +76,24 @@ def test_settings() -> Settings:
     a dedicated test database configured via TEST_DB_* environment variables,
     never the production database.
 
+    If TESTIZER_ENABLE_DB_TESTS is not set, returns regular settings without
+    test database configuration to avoid errors when integration tests are disabled.
+
     Returns:
-        Settings object with test database configuration.
+        Settings object with test database configuration (if enabled) or regular settings.
     """
     from config.settings import (
         load_settings,
     )
 
     settings = load_settings()
-    # Replace database settings with test database settings
-    settings.database = get_test_database_settings()
+
+    # Only use test database settings if integration tests are enabled
+    # This prevents errors when TEST_DB_NAME is not set but tests are disabled
+    if os.getenv("TESTIZER_ENABLE_DB_TESTS", "0") == "1":
+        # Replace database settings with test database settings
+        settings.database = get_test_database_settings()
+    # Otherwise, use regular settings (tests will be skipped by mysql_test_database fixture)
 
     return settings
 
