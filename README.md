@@ -1,7 +1,7 @@
 # Testizer Email Funnels
 
 ![CI](https://github.com/AmaLS367/testizer_email_funnels/actions/workflows/ci.yml/badge.svg?branch=main)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
 ![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)
 ![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)
 
@@ -23,7 +23,7 @@ Python service for managing email funnels for Testizer.com based on MySQL data a
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.11 or higher
 - MySQL database access (MODX)
 - Brevo API key
 - Virtual environment (recommended)
@@ -239,7 +239,7 @@ Continuous Integration is configured via GitHub Actions:
 
 - Runs on push and pull requests to `main`
 - Tests on Ubuntu and Windows
-- Python 3.13
+- Python 3.11 and 3.12
 - Checks code formatting, style, types, and runs tests
 
 See [`.github/workflows/ci.yml`](.github/workflows/ci.yml) for details.
