@@ -228,10 +228,10 @@ The project uses several tools to maintain code quality:
 Run all checks:
 
 ```powershell
-black --check .
-ruff check .
-mypy .
-pytest
+python -m ruff check .
+python -m black . --check
+python -m mypy .
+python -m pytest -m "not integration"
 ```
 
 ## CI/CD
