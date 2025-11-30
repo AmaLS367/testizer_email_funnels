@@ -12,6 +12,7 @@ class DummyCursor:
         self.executed_queries = []
         self.fetchone_result: tuple | None = None
         self.close_calls = 0
+        self.lastrowid = 42
 
     def execute(self, query, params=None):
         self.executed_queries.append((query, params))
@@ -77,11 +78,12 @@ def test_funnel_entry_exists_returns_true_when_row_found_with_test_id():
     assert params == ("user@example.com", "language", 42)
 
 
-def test_create_funnel_entry_inserts_and_commits():
+def test_create_funnel_entry_inserts_and_returns_id():
     cursor = DummyCursor()
+    cursor.lastrowid = 123
     connection = DummyConnection(cursor)
 
-    tracking.create_funnel_entry(
+    result = tracking.create_funnel_entry(
         connection=connection,  # type: ignore[arg-type]
         email="user@example.com",
         funnel_type="language",
@@ -89,7 +91,10 @@ def test_create_funnel_entry_inserts_and_commits():
         test_id=42,
     )
 
-    assert connection.commits == 1
+    # Should return the new row ID
+    assert result == 123
+    # Should not call commit or rollback (transaction control is caller's responsibility)
+    assert connection.commits == 0
     assert connection.rollbacks == 0
     assert cursor.close_calls == 1
     assert len(cursor.executed_queries) == 1
@@ -111,8 +116,8 @@ def test_create_funnel_entry_handles_duplicate_gracefully():
     cursor.execute = execute_raises_integrity_error
     connection = DummyConnection(cursor)
 
-    # Should not raise an exception
-    tracking.create_funnel_entry(
+    # Should not raise an exception, should return None
+    result = tracking.create_funnel_entry(
         connection=connection,  # type: ignore[arg-type]
         email="user@example.com",
         funnel_type="language",
@@ -120,8 +125,10 @@ def test_create_funnel_entry_handles_duplicate_gracefully():
         test_id=42,
     )
 
-    # Should rollback but not commit, and cursor should be closed
-    assert connection.rollbacks == 1
+    # Should return None to indicate no new row was created
+    assert result is None
+    # Should not call commit or rollback (transaction control is caller's responsibility)
+    assert connection.rollbacks == 0
     assert connection.commits == 0
     assert cursor.close_calls == 1
 
@@ -146,14 +153,14 @@ def test_create_funnel_entry_propagates_other_errors():
             test_id=42,
         )
 
-    # Should not commit or rollback (exception occurred before commit)
+    # Should not commit or rollback (transaction control is caller's responsibility)
     # Cursor should still be closed in finally block
     assert connection.commits == 0
     assert connection.rollbacks == 0
     assert cursor.close_calls == 1
 
 
-def test_mark_certificate_purchased_without_test_id_updates_and_commits():
+def test_mark_certificate_purchased_without_test_id_updates():
     cursor = DummyCursor()
     connection = DummyConnection(cursor)
     purchased_at = datetime(2025, 1, 1, 12, 0, 0)
@@ -166,7 +173,9 @@ def test_mark_certificate_purchased_without_test_id_updates_and_commits():
         purchased_at=purchased_at,
     )
 
-    assert connection.commits == 1
+    # Should not call commit (transaction control is caller's responsibility)
+    assert connection.commits == 0
+    assert cursor.close_calls == 1
     assert len(cursor.executed_queries) == 1
     query, params = cursor.executed_queries[0]
     assert "UPDATE funnel_entries" in query
@@ -176,7 +185,7 @@ def test_mark_certificate_purchased_without_test_id_updates_and_commits():
     assert params == (purchased_at, "user@example.com", "language")
 
 
-def test_mark_certificate_purchased_with_test_id_updates_and_commits():
+def test_mark_certificate_purchased_with_test_id_updates():
     cursor = DummyCursor()
     connection = DummyConnection(cursor)
     purchased_at = datetime(2025, 1, 1, 12, 0, 0)
@@ -189,7 +198,9 @@ def test_mark_certificate_purchased_with_test_id_updates_and_commits():
         purchased_at=purchased_at,
     )
 
-    assert connection.commits == 1
+    # Should not call commit (transaction control is caller's responsibility)
+    assert connection.commits == 0
+    assert cursor.close_calls == 1
     assert len(cursor.executed_queries) == 1
     query, params = cursor.executed_queries[0]
     assert "UPDATE funnel_entries" in query

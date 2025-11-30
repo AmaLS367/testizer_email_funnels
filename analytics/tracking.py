@@ -67,18 +67,16 @@ def create_funnel_entry(
     funnel_type: str,
     user_id: Optional[int] = None,
     test_id: Optional[int] = None,
-) -> None:
+) -> Optional[int]:
     """Records a new funnel entry when a user is added to a funnel.
 
     This function enforces idempotency at the database level using a unique constraint
     on (email, funnel_type, test_id). If a duplicate entry already exists, the function
-    handles the IntegrityError gracefully by rolling back and logging an informational
-    message, without raising an exception.
+    handles the IntegrityError gracefully by logging an informational message and
+    returning None, without raising an exception.
 
-    Side Effects:
-        - Inserts record into funnel_entries table on success.
-        - Commits transaction on successful insert.
-        - Rolls back transaction on duplicate entry (IntegrityError).
+    This function does not perform transaction control (commit/rollback). The caller
+    is responsible for managing transactions.
 
     Args:
         connection: Active MySQL database connection.
@@ -86,6 +84,10 @@ def create_funnel_entry(
         funnel_type: Either 'language' or 'non_language'.
         user_id: Optional MODX user ID for cross-referencing.
         test_id: Optional test ID for cross-referencing.
+
+    Returns:
+        The ID of the newly created funnel entry as an integer, or None if the entry
+        already exists (duplicate detected via unique constraint).
 
     Raises:
         mysql.connector.Error: If database insert fails for reasons other than
@@ -109,18 +111,18 @@ def create_funnel_entry(
         params = (email, funnel_type, user_id, test_id)
 
         cursor.execute(query, params)
-        connection.commit()
+        new_id = cursor.lastrowid
+        return new_id
 
-    except IntegrityError as e:
+    except IntegrityError:
         # Handle duplicate entry due to unique constraint on (email, funnel_type, test_id)
-        connection.rollback()
         logger.info(
             "Duplicate funnel entry already exists (email=%s, funnel_type=%s, test_id=%s)",
             email,
             funnel_type,
             test_id,
         )
-        # Do not re-raise the exception - duplicate is handled gracefully
+        return None
 
     finally:
         if cursor:
@@ -144,9 +146,8 @@ def mark_certificate_purchased(
     Edge case: If multiple entries match (same email+funnel_type), all are updated.
     This is intentional to handle historical duplicates without data loss.
 
-    Side Effects:
-        - Updates funnel_entries table records.
-        - Commits transaction immediately.
+    This function does not perform transaction control (commit/rollback). The caller
+    is responsible for managing transactions.
 
     Args:
         connection: Active MySQL database connection.
@@ -156,31 +157,35 @@ def mark_certificate_purchased(
             all entries regardless of test_id.
         purchased_at: Timestamp when purchase was completed. Used for conversion
             analytics and reporting.
+
+    Raises:
+        mysql.connector.Error: If database update fails (e.g., connection error).
     """
     cursor = connection.cursor()
 
-    if test_id is None:
-        query = """
-        UPDATE funnel_entries
-        SET certificate_purchased = 1,
-            certificate_purchased_at = %s
-        WHERE email = %s
-          AND funnel_type = %s
-          AND certificate_purchased = 0
-        """
-        params = (purchased_at, email, funnel_type)
-    else:
-        query = """
-        UPDATE funnel_entries
-        SET certificate_purchased = 1,
-            certificate_purchased_at = %s
-        WHERE email = %s
-          AND funnel_type = %s
-          AND test_id = %s
-          AND certificate_purchased = 0
-        """
-        params = (purchased_at, email, funnel_type, test_id)  # type: ignore[assignment]
+    try:
+        if test_id is None:
+            query = """
+            UPDATE funnel_entries
+            SET certificate_purchased = 1,
+                certificate_purchased_at = %s
+            WHERE email = %s
+              AND funnel_type = %s
+              AND certificate_purchased = 0
+            """
+            params = (purchased_at, email, funnel_type)
+        else:
+            query = """
+            UPDATE funnel_entries
+            SET certificate_purchased = 1,
+                certificate_purchased_at = %s
+            WHERE email = %s
+              AND funnel_type = %s
+              AND test_id = %s
+              AND certificate_purchased = 0
+            """
+            params = (purchased_at, email, funnel_type, test_id)  # type: ignore[assignment]
 
-    cursor.execute(query, params)
-    connection.commit()
-    cursor.close()
+        cursor.execute(query, params)
+    finally:
+        cursor.close()
