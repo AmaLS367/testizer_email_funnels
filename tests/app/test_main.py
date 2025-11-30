@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -64,7 +65,7 @@ class FakeFunnelSyncService:
         self.brevo_client = brevo_client
         self.language_list_id = language_list_id
         self.non_language_list_id = non_language_list_id
-        self.sync_called_with = None
+        self.sync_called_with: Optional[int] = None
 
     def sync(self, max_rows_per_type: int) -> None:
         self.sync_called_with = max_rows_per_type
@@ -76,7 +77,7 @@ class FakePurchaseSyncService:
     ) -> None:
         self.connection = connection
         self.brevo_client = brevo_client
-        self.sync_called_with = None
+        self.sync_called_with: Optional[int] = None
 
     def sync(self, max_rows: int) -> None:
         self.sync_called_with = max_rows
@@ -230,7 +231,10 @@ def test_main_propagates_keyboard_interrupt(monkeypatch) -> None:
         logger.info = MagicMock()
         import logging
 
-        logging.getLogger = lambda name: logger
+        def fake_get_logger(name: Optional[str] = None):  # type: ignore[assignment]
+            return logger
+
+        logging.getLogger = fake_get_logger
         return None
 
     monkeypatch.setattr(app_main, "load_settings", fake_load_settings)
